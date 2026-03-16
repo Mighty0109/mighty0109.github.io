@@ -371,6 +371,10 @@ var App = (function () {
       btn.disabled = true;
       btn.innerHTML = '<span class="img-editor-spinner"></span> \ubd84\uc11d \uc911...';
 
+      var beforeScale = layer.scale;
+      var beforeOffX = layer.offsetX;
+      var beforeOffY = layer.offsetY;
+      var beforeMode = layer.fillMode;
       CW.AutoFit.apply(layer).then(function (ok) {
         btn.disabled = false;
         btn.innerHTML = AUTO_FIT_ICON + ' \uc790\ub3d9 \ub9de\ucda4';
@@ -378,12 +382,18 @@ var App = (function () {
           showTab('controls');
           refreshControls();
           refreshLayerList();
-          UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc644\ub8cc');
+          var debugMsg = beforeMode + ' s' + beforeScale.toFixed(1) +
+            ' (' + Math.round(beforeOffX) + ',' + Math.round(beforeOffY) + ')' +
+            ' → ' + layer.fillMode + ' s' + layer.scale.toFixed(1) +
+            ' (' + Math.round(layer.offsetX) + ',' + Math.round(layer.offsetY) + ')';
+          UI.showToast(debugMsg);
+        } else {
+          UI.showToast('\uc790\ub3d9 \ub9de\ucda4: ok=false');
         }
-      }).catch(function () {
+      }).catch(function (e) {
         btn.disabled = false;
         btn.innerHTML = AUTO_FIT_ICON + ' \uc790\ub3d9 \ub9de\ucda4';
-        UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc2e4\ud328');
+        UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc2e4\ud328: ' + (e && e.message || e));
       });
     });
     return btn;

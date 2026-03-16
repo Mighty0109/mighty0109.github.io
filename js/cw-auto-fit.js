@@ -22,29 +22,19 @@ CW.AutoFit = (function () {
     ctx.drawImage(img, 0, 0, w, h);
 
     var data;
-    try {
-      data = ctx.getImageData(0, 0, w, h).data;
-    } catch (e) {
-      return 'photo';
-    }
+    try { data = ctx.getImageData(0, 0, w, h).data; }
+    catch (e) { return 'photo'; }
 
     var total = w * h;
     var transparentCount = 0;
-
     for (var i = 0; i < data.length; i += 4) {
       if (data[i + 3] < 10) transparentCount++;
     }
 
-    var transparentRatio = transparentCount / total;
+    if (transparentCount / total > 0.15) return 'logo';
 
-    // Has significant transparency → logo/icon
-    if (transparentRatio > 0.15) return 'logo';
-
-    // Aspect ratio check
     var ratio = iw / ih;
     if (ratio > 3 || ratio < 0.33) return 'pattern';
-
-    // Small image → icon
     if (iw < 300 && ih < 300) return 'logo';
 
     return 'photo';
@@ -54,7 +44,6 @@ CW.AutoFit = (function () {
 
   function detectFocalPoint(img) {
     var useSmartcrop = typeof smartcrop !== 'undefined';
-    console.log('[AutoFit] smartcrop available:', useSmartcrop);
 
     return new Promise(function (resolve) {
       if (useSmartcrop) {
@@ -62,47 +51,33 @@ CW.AutoFit = (function () {
           smartcrop.crop(img, { width: 100, height: 100 }).then(function (result) {
             if (result && result.topCrop) {
               var c = result.topCrop;
-              var focal = {
-                x: (c.x + c.width / 2) / (img.naturalWidth || img.width),
-                y: (c.y + c.height / 2) / (img.naturalHeight || img.height)
-              };
-              console.log('[AutoFit] smartcrop focal:', focal.x.toFixed(3), focal.y.toFixed(3));
-              resolve(focal);
+              var iw = img.naturalWidth || img.width;
+              var ih = img.naturalHeight || img.height;
+              resolve({
+                x: (c.x + c.width / 2) / iw,
+                y: (c.y + c.height / 2) / ih,
+                source: 'smartcrop'
+              });
             } else {
               resolve(heuristicFocal(img));
             }
-          }).catch(function (e) {
-            console.warn('[AutoFit] smartcrop failed:', e);
+          }).catch(function () {
             resolve(heuristicFocal(img));
           });
           return;
-        } catch (e) {
-          console.warn('[AutoFit] smartcrop sync error:', e);
-        }
+        } catch (e) { /* sync error */ }
       }
       resolve(heuristicFocal(img));
     });
   }
 
-  // Heuristic focal point for opaque photos (JPEG etc.)
-  // Portrait-oriented → assume face in upper 35%
-  // Landscape-oriented → center
   function heuristicFocal(img) {
     var iw = img.naturalWidth || img.width;
     var ih = img.naturalHeight || img.height;
-
-    // Portrait orientation: face is typically in upper third
-    if (ih > iw) {
-      console.log('[AutoFit] heuristic: portrait orientation, focal upper-center');
-      return { x: 0.5, y: 0.35 };
-    }
-
-    // Landscape: subject typically center
-    console.log('[AutoFit] heuristic: landscape orientation, focal center');
-    return { x: 0.5, y: 0.45 };
+    if (ih > iw) return { x: 0.5, y: 0.33, source: 'heuristic-portrait' };
+    return { x: 0.5, y: 0.42, source: 'heuristic-landscape' };
   }
 
-  // Focal point for transparent images (logo/icon)
   function contentCenter(img) {
     try {
       var iw = img.naturalWidth || img.width;
@@ -112,8 +87,7 @@ CW.AutoFit = (function () {
       if (w === 0 || h === 0) return { x: 0.5, y: 0.5 };
 
       var canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = w; canvas.height = h;
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
       var data = ctx.getImageData(0, 0, w, h).data;
@@ -121,11 +95,7 @@ CW.AutoFit = (function () {
       var sumX = 0, sumY = 0, count = 0;
       for (var y = 0; y < h; y++) {
         for (var x = 0; x < w; x++) {
-          if (data[(y * w + x) * 4 + 3] > 30) {
-            sumX += x;
-            sumY += y;
-            count++;
-          }
+          if (data[(y * w + x) * 4 + 3] > 30) { sumX += x; sumY += y; count++; }
         }
       }
       if (count === 0) return { x: 0.5, y: 0.5 };
@@ -147,37 +117,52 @@ CW.AutoFit = (function () {
     var canvasH = CW.state.internalHeight;
     if (!canvasW || !canvasH || !imgW || !imgH) return Promise.resolve(false);
 
+    // Save before values
+    var before = {
+      fillMode: layer.fillMode,
+      scale: layer.scale,
+      offsetX: layer.offsetX,
+      offsetY: layer.offsetY
+    };
+
     var type = classifyImage(img);
-    console.log('[AutoFit] image type:', type, 'size:', imgW + 'x' + imgH);
 
     var bounds = CW.PanelDetector.getPanelBounds(layer.selectedPanels);
+    var boundsSource = 'panels';
     if (!bounds) {
       bounds = { x: 0, y: 0, w: canvasW, h: canvasH, cx: canvasW / 2, cy: canvasH / 2 };
+      boundsSource = 'fullCanvas';
     }
-    console.log('[AutoFit] bounds:', JSON.stringify(bounds));
 
+    var resultPromise;
     if (type === 'logo') {
-      return applyLogo(layer, img, imgW, imgH, canvasW, canvasH, bounds);
+      resultPromise = applyLogo(layer, img, imgW, imgH, canvasW, canvasH, bounds);
     } else if (type === 'pattern') {
-      return applyPattern(layer, bounds);
+      resultPromise = applyPattern(layer);
     } else {
-      return applyPhoto(layer, img, imgW, imgH, canvasW, canvasH, bounds);
+      resultPromise = applyPhoto(layer, img, imgW, imgH, canvasW, canvasH, bounds);
     }
+
+    return resultPromise.then(function (info) {
+      // Debug toast
+      var msg = '[' + type + '] ' + (info.focalSource || '') +
+        '\nBounds: ' + bounds.w + 'x' + bounds.h + ' center(' + Math.round(bounds.cx) + ',' + Math.round(bounds.cy) + ') ' + boundsSource +
+        '\nBefore: mode=' + before.fillMode + ' s=' + before.scale.toFixed(2) + ' off(' + Math.round(before.offsetX) + ',' + Math.round(before.offsetY) + ')' +
+        '\nAfter: mode=' + layer.fillMode + ' s=' + layer.scale.toFixed(2) + ' off(' + Math.round(layer.offsetX) + ',' + Math.round(layer.offsetY) + ')';
+      console.log('[AutoFit]\n' + msg);
+
+      return true;
+    }).catch(function (e) {
+      console.error('[AutoFit] error:', e);
+      return false;
+    });
   }
 
-  // Photo/portrait: cover panel area, center focal point on panel
   function applyPhoto(layer, img, imgW, imgH, canvasW, canvasH, bounds) {
     return detectFocalPoint(img).then(function (focal) {
-      // Scale to cover panel bounds + margin
       var scale = Math.max(bounds.w / imgW, bounds.h / imgH) * 1.15;
-
-      // Move focal point to panel center
       var offsetX = bounds.cx - canvasW / 2 - (focal.x - 0.5) * imgW * scale;
       var offsetY = bounds.cy - canvasH / 2 - (focal.y - 0.5) * imgH * scale;
-
-      console.log('[AutoFit] photo result: scale=' + scale.toFixed(3) +
-        ' offset=(' + offsetX.toFixed(1) + ',' + offsetY.toFixed(1) + ')' +
-        ' focal=(' + focal.x.toFixed(3) + ',' + focal.y.toFixed(3) + ')');
 
       CW.LayerStore.update(layer.id, {
         fillMode: 'center',
@@ -186,24 +171,15 @@ CW.AutoFit = (function () {
         offsetY: offsetY,
         rotation: 0
       });
-      return true;
-    }).catch(function (e) {
-      console.error('[AutoFit] error:', e);
-      return false;
+      return { focalSource: focal.source + ' (' + focal.x.toFixed(2) + ',' + focal.y.toFixed(2) + ')' };
     });
   }
 
-  // Logo/icon: fit inside panel with padding
   function applyLogo(layer, img, imgW, imgH, canvasW, canvasH, bounds) {
     var focal = contentCenter(img);
-    // Fit inside panel with 20% padding
     var scale = Math.min(bounds.w / imgW, bounds.h / imgH) * 0.8;
-
     var offsetX = bounds.cx - canvasW / 2 - (focal.x - 0.5) * imgW * scale;
     var offsetY = bounds.cy - canvasH / 2 - (focal.y - 0.5) * imgH * scale;
-
-    console.log('[AutoFit] logo result: scale=' + scale.toFixed(3) +
-      ' offset=(' + offsetX.toFixed(1) + ',' + offsetY.toFixed(1) + ')');
 
     CW.LayerStore.update(layer.id, {
       fillMode: 'center',
@@ -212,11 +188,10 @@ CW.AutoFit = (function () {
       offsetY: offsetY,
       rotation: 0
     });
-    return Promise.resolve(true);
+    return Promise.resolve({ focalSource: 'content-center' });
   }
 
-  // Pattern/texture: tile from origin
-  function applyPattern(layer, bounds) {
+  function applyPattern(layer) {
     CW.LayerStore.update(layer.id, {
       fillMode: 'tile',
       scale: 1.0,
@@ -224,7 +199,7 @@ CW.AutoFit = (function () {
       offsetY: 0,
       rotation: 0
     });
-    return Promise.resolve(true);
+    return Promise.resolve({ focalSource: 'pattern-tile' });
   }
 
   return { apply: apply };
