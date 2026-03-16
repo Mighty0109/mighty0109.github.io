@@ -371,8 +371,8 @@ var App = (function () {
       btn.disabled = true;
       btn.innerHTML = '<span class="img-editor-spinner"></span> \ubd84\uc11d \uc911...';
 
-      CW.AutoFit.apply(layer, function (pct) {
-        btn.innerHTML = '<span class="img-editor-spinner"></span> \ubc30\uacbd \uc81c\uac70 ' + pct + '%';
+      CW.AutoFit.apply(layer, function (pct, current, total) {
+        btn.innerHTML = '<span class="img-editor-spinner"></span> \ubc30\uacbd \uc81c\uac70 ' + current + '/' + total + ' (' + pct + '%)';
       }).then(function (ok) {
         btn.disabled = false;
         btn.innerHTML = AUTO_FIT_ICON + ' \uc790\ub3d9 \ub9de\ucda4';

@@ -133,32 +133,55 @@ CW.AutoFit = (function () {
     }
   }
 
+  // ---- Remove backgrounds for all layers ----
+
+  function removeAllBackgrounds(onProgress) {
+    var layers = CW.LayerStore.getAll();
+    var toProcess = [];
+    for (var i = 0; i < layers.length; i++) {
+      if (layers[i].image && !hasTransparency(layers[i].image)) {
+        toProcess.push(layers[i]);
+      }
+    }
+    if (toProcess.length === 0) return Promise.resolve();
+
+    var done = 0;
+    var total = toProcess.length;
+
+    function processNext(idx) {
+      if (idx >= toProcess.length) return Promise.resolve();
+      var layer = toProcess[idx];
+      return removeBackground(layer.image, function (pct) {
+        if (onProgress) {
+          var overall = Math.round(((done + pct / 100) / total) * 100);
+          onProgress(overall, done + 1, total);
+        }
+      }).then(function (newImg) {
+        CW.LayerStore.updateImage(layer.id, newImg);
+        done++;
+        if (onProgress) onProgress(Math.round((done / total) * 100), done, total);
+        return processNext(idx + 1);
+      });
+    }
+
+    return processNext(0);
+  }
+
   // ---- Apply Auto Fit ----
 
   function apply(layer, onProgress) {
     if (!layer || !layer.image) return Promise.resolve(false);
 
-    var img = layer.image;
     var canvasW = CW.state.internalWidth;
     var canvasH = CW.state.internalHeight;
     if (!canvasW || !canvasH) return Promise.resolve(false);
 
-    // Step 1: Remove background if image doesn't already have transparency
-    var bgRemovePromise;
-    if (hasTransparency(img)) {
-      bgRemovePromise = Promise.resolve(img);
-    } else {
-      bgRemovePromise = removeBackground(img, onProgress).then(function (newImg) {
-        // Update layer image with bg-removed version
-        CW.LayerStore.updateImage(layer.id, newImg);
-        return newImg;
-      });
-    }
-
-    // Step 2: After bg removal, detect focal point and position
-    return bgRemovePromise.then(function (processedImg) {
-      var imgW = processedImg.naturalWidth || processedImg.width;
-      var imgH = processedImg.naturalHeight || processedImg.height;
+    // Step 1: Remove backgrounds for ALL layers
+    return removeAllBackgrounds(onProgress).then(function () {
+      // Step 2: Position the selected layer
+      var img = layer.image; // may have been updated by bg removal
+      var imgW = img.naturalWidth || img.width;
+      var imgH = img.naturalHeight || img.height;
       if (!imgW || !imgH) return false;
 
       var bounds = CW.PanelDetector.getPanelBounds(layer.selectedPanels);
@@ -166,20 +189,15 @@ CW.AutoFit = (function () {
         bounds = { x: 0, y: 0, w: canvasW, h: canvasH, cx: canvasW / 2, cy: canvasH / 2 };
       }
 
-      return detectFocalPoint(processedImg).then(function (focal) {
-        // Scale: cover panel bounds + 15% margin
+      return detectFocalPoint(img).then(function (focal) {
         var scale = Math.max(bounds.w / imgW, bounds.h / imgH) * 1.15;
-
-        // Offset: place focal point at panel center
         var offsetX = bounds.cx - canvasW / 2 - (focal.x - 0.5) * imgW * scale;
         var offsetY = bounds.cy - canvasH / 2 - (focal.y - 0.5) * imgH * scale;
 
         console.log('[AutoFit] focal=' + focal.source +
           ' (' + focal.x.toFixed(2) + ',' + focal.y.toFixed(2) + ')' +
           ' scale=' + scale.toFixed(3) +
-          ' offset=(' + Math.round(offsetX) + ',' + Math.round(offsetY) + ')' +
-          ' bounds=' + bounds.w + 'x' + bounds.h +
-          ' center(' + Math.round(bounds.cx) + ',' + Math.round(bounds.cy) + ')');
+          ' offset=(' + Math.round(offsetX) + ',' + Math.round(offsetY) + ')');
 
         CW.LayerStore.update(layer.id, {
           fillMode: 'center',
