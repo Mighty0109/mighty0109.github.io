@@ -1045,14 +1045,14 @@ h4 { font-size: 0.95rem; font-weight: 600; }
 }
 
 .settings-section h4 {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   margin-bottom: 8px;
   font-size: 0.8125rem;
 }
 
 .settings-section p {
   font-size: 0.8125rem;
-  color: var(--text-tertiary);
+  color: var(--text-primary);
   line-height: 1.6;
 }
 
