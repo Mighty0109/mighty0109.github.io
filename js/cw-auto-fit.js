@@ -74,27 +74,30 @@ CW.AutoFit = (function () {
    * centering the focal point on the panel center.
    */
   function computeFit(imgW, imgH, canvasW, canvasH, bounds, focal) {
-    // Scale: cover the panel bounds with 1.1x margin
-    var scaleX = bounds.w / imgW;
-    var scaleY = bounds.h / imgH;
-    var scale = Math.max(scaleX, scaleY) * 1.1;
+    // Renderer fit mode: fitScale = Math.min(canvasW/imgW, canvasH/imgH) * layer.scale
+    // Image drawn centered at (cx + offsetX, cy + offsetY) with size imgW*fitScale x imgH*fitScale
+    var baseFitScale = Math.min(canvasW / imgW, canvasH / imgH);
 
-    // Offset: align focal point to panel center
-    // In the rendering system, offsetX/Y are pixel offsets in canvas space
-    // The image is drawn centered on the canvas, then offset is applied
-    var imgCenterX = canvasW / 2;
-    var imgCenterY = canvasH / 2;
+    // We need the image to cover the panel bounds (with 1.1x margin)
+    var neededScaleX = bounds.w / imgW;
+    var neededScaleY = bounds.h / imgH;
+    var neededScale = Math.max(neededScaleX, neededScaleY) * 1.1;
 
-    // Where the focal point would be without offset (image centered on canvas)
-    var focalCanvasX = imgCenterX + (focal.x - 0.5) * imgW * scale;
-    var focalCanvasY = imgCenterY + (focal.y - 0.5) * imgH * scale;
+    // layer.scale is a multiplier on baseFitScale
+    var layerScale = neededScale / baseFitScale;
+    var actualScale = baseFitScale * layerScale; // = neededScale
 
-    // We want focal point at panel center
-    var offsetX = bounds.cx - focalCanvasX;
-    var offsetY = bounds.cy - focalCanvasY;
+    // Offset: canvas center is (canvasW/2, canvasH/2), offset(0,0) means image centered there
+    // Focal point position relative to image center: (focal.x - 0.5) * imgW * actualScale
+    // We want focal point at panel center (bounds.cx, bounds.cy)
+    // So: canvasW/2 + offsetX + (focal.x - 0.5) * imgW * actualScale = bounds.cx
+    var cx = canvasW / 2;
+    var cy = canvasH / 2;
+    var offsetX = bounds.cx - cx - (focal.x - 0.5) * imgW * actualScale;
+    var offsetY = bounds.cy - cy - (focal.y - 0.5) * imgH * actualScale;
 
     return {
-      scale: scale,
+      scale: layerScale,
       offsetX: offsetX,
       offsetY: offsetY
     };
