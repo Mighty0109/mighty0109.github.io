@@ -282,6 +282,15 @@ CW.PanelDetector = (function () {
           sCtx.drawImage(panelMasks[idx], 0, 0);
         }
       }
+    } else if (panelMasks.length > 0) {
+      // Use union of all detected panels (not global mask which covers entire canvas)
+      srcCanvas = document.createElement('canvas');
+      srcCanvas.width = w;
+      srcCanvas.height = h;
+      var sCtx = srcCanvas.getContext('2d');
+      for (var i = 0; i < panelMasks.length; i++) {
+        sCtx.drawImage(panelMasks[i], 0, 0);
+      }
     } else {
       srcCanvas = CW.state.maskCanvas;
     }
