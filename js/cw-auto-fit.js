@@ -6,145 +6,115 @@
 
 CW.AutoFit = (function () {
 
-  /**
-   * Detect focal point using smartcrop.js (face/saliency detection).
-   * Falls back to pixel-based center if smartcrop unavailable.
-   */
   function detectFocalPoint(img) {
     return new Promise(function (resolve) {
-      if (typeof smartcrop === 'undefined') {
-        resolve(fallbackFocalPoint(img));
-        return;
-      }
-      smartcrop.crop(img, { width: 100, height: 100 }).then(function (result) {
-        if (result && result.topCrop) {
-          var c = result.topCrop;
-          resolve({
-            x: (c.x + c.width / 2) / img.naturalWidth,
-            y: (c.y + c.height / 2) / img.naturalHeight
+      if (typeof smartcrop !== 'undefined') {
+        try {
+          smartcrop.crop(img, { width: 100, height: 100 }).then(function (result) {
+            if (result && result.topCrop) {
+              var c = result.topCrop;
+              resolve({
+                x: (c.x + c.width / 2) / (img.naturalWidth || img.width),
+                y: (c.y + c.height / 2) / (img.naturalHeight || img.height)
+              });
+            } else {
+              resolve(fallbackFocalPoint(img));
+            }
+          }).catch(function () {
+            resolve(fallbackFocalPoint(img));
           });
-        } else {
-          resolve(fallbackFocalPoint(img));
+          return;
+        } catch (e) {
+          // smartcrop threw synchronously
         }
-      }).catch(function () {
-        resolve(fallbackFocalPoint(img));
-      });
+      }
+      resolve(fallbackFocalPoint(img));
     });
   }
 
-  /**
-   * Fallback: find content center by scanning non-transparent pixels.
-   */
   function fallbackFocalPoint(img) {
-    var w = Math.min(img.naturalWidth, 256);
-    var h = Math.min(img.naturalHeight, 256);
-    var canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    var ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    var data = ctx.getImageData(0, 0, w, h).data;
+    try {
+      var iw = img.naturalWidth || img.width;
+      var ih = img.naturalHeight || img.height;
+      var w = Math.min(iw, 256);
+      var h = Math.min(ih, 256);
+      if (w === 0 || h === 0) return { x: 0.5, y: 0.5 };
 
-    var sumX = 0, sumY = 0, count = 0;
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        var idx = (y * w + x) * 4;
-        var a = data[idx + 3];
-        var brightness = data[idx] + data[idx + 1] + data[idx + 2];
-        // Weight by alpha and content (non-white, non-transparent)
-        if (a > 30 && brightness < 700) {
-          sumX += x;
-          sumY += y;
-          count++;
+      var canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      var data = ctx.getImageData(0, 0, w, h).data;
+
+      var sumX = 0, sumY = 0, count = 0;
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var idx = (y * w + x) * 4;
+          if (data[idx + 3] > 30 && (data[idx] + data[idx + 1] + data[idx + 2]) < 700) {
+            sumX += x;
+            sumY += y;
+            count++;
+          }
         }
       }
-    }
-
-    if (count === 0) {
+      if (count === 0) return { x: 0.5, y: 0.5 };
+      return { x: (sumX / count) / w, y: (sumY / count) / h };
+    } catch (e) {
       return { x: 0.5, y: 0.5 };
     }
-    return {
-      x: (sumX / count) / w,
-      y: (sumY / count) / h
-    };
   }
 
-  /**
-   * Compute scale and offset to fit image into panel bounds,
-   * centering the focal point on the panel center.
-   */
-  function computeFit(imgW, imgH, canvasW, canvasH, bounds, focal) {
-    // Renderer fit mode: fitScale = Math.min(canvasW/imgW, canvasH/imgH) * layer.scale
-    // Image drawn centered at (cx + offsetX, cy + offsetY) with size imgW*fitScale x imgH*fitScale
-    var baseFitScale = Math.min(canvasW / imgW, canvasH / imgH);
-
-    // We need the image to cover the panel bounds (with 1.1x margin)
-    var neededScaleX = bounds.w / imgW;
-    var neededScaleY = bounds.h / imgH;
-    var neededScale = Math.max(neededScaleX, neededScaleY) * 1.1;
-
-    // layer.scale is a multiplier on baseFitScale
-    var layerScale = neededScale / baseFitScale;
-    var actualScale = baseFitScale * layerScale; // = neededScale
-
-    // Offset: canvas center is (canvasW/2, canvasH/2), offset(0,0) means image centered there
-    // Focal point position relative to image center: (focal.x - 0.5) * imgW * actualScale
-    // We want focal point at panel center (bounds.cx, bounds.cy)
-    // So: canvasW/2 + offsetX + (focal.x - 0.5) * imgW * actualScale = bounds.cx
-    var cx = canvasW / 2;
-    var cy = canvasH / 2;
-    var offsetX = bounds.cx - cx - (focal.x - 0.5) * imgW * actualScale;
-    var offsetY = bounds.cy - cy - (focal.y - 0.5) * imgH * actualScale;
-
-    return {
-      scale: layerScale,
-      offsetX: offsetX,
-      offsetY: offsetY
-    };
-  }
-
-  /**
-   * Main entry: apply auto-fit to a layer.
-   * Returns a Promise that resolves when done.
-   */
   function apply(layer) {
-    if (!layer || !layer.image) {
-      return Promise.resolve(false);
-    }
+    if (!layer || !layer.image) return Promise.resolve(false);
 
     var img = layer.image;
     var imgW = img.naturalWidth || img.width;
     var imgH = img.naturalHeight || img.height;
     var canvasW = CW.state.internalWidth;
     var canvasH = CW.state.internalHeight;
+    if (!canvasW || !canvasH || !imgW || !imgH) return Promise.resolve(false);
 
-    if (!canvasW || !canvasH) return Promise.resolve(false);
-
-    // Get panel bounds from selected panels
     var bounds = CW.PanelDetector.getPanelBounds(layer.selectedPanels);
     if (!bounds) {
-      // Fallback: use entire canvas
       bounds = { x: 0, y: 0, w: canvasW, h: canvasH, cx: canvasW / 2, cy: canvasH / 2 };
     }
 
+    console.log('[AutoFit] imgW=' + imgW + ' imgH=' + imgH + ' canvasW=' + canvasW + ' canvasH=' + canvasH);
+    console.log('[AutoFit] bounds:', JSON.stringify(bounds));
+
     return detectFocalPoint(img).then(function (focal) {
-      var fit = computeFit(imgW, imgH, canvasW, canvasH, bounds, focal);
+      console.log('[AutoFit] focal:', JSON.stringify(focal));
 
-      // Apply to layer
-      layer.fillMode = 'fit';
-      layer.scale = fit.scale;
-      layer.offsetX = fit.offsetX;
-      layer.offsetY = fit.offsetY;
-      layer.rotation = 0;
+      // Renderer fit mode: actualPixelScale = min(canvasW/imgW, canvasH/imgH) * layer.scale
+      // Image center drawn at (canvasW/2 + offsetX, canvasH/2 + offsetY)
+      var baseFit = Math.min(canvasW / imgW, canvasH / imgH);
 
-      CW.emit('layer:updated', layer.id);
-      CW.emit('render:request');
+      // layer.scale multiplier to cover panel bounds + 10% margin
+      var coverScale = Math.max(bounds.w / imgW, bounds.h / imgH) * 1.1;
+      var layerScale = coverScale / baseFit;
+      var actual = baseFit * layerScale;
+
+      // Offset to place focal point at panel center
+      var offsetX = bounds.cx - canvasW / 2 - (focal.x - 0.5) * imgW * actual;
+      var offsetY = bounds.cy - canvasH / 2 - (focal.y - 0.5) * imgH * actual;
+
+      console.log('[AutoFit] layerScale=' + layerScale.toFixed(3) + ' offsetX=' + offsetX.toFixed(1) + ' offsetY=' + offsetY.toFixed(1));
+
+      CW.LayerStore.update(layer.id, {
+        fillMode: 'fit',
+        scale: layerScale,
+        offsetX: offsetX,
+        offsetY: offsetY,
+        rotation: 0
+      });
 
       return true;
+    }).catch(function (e) {
+      console.error('[AutoFit] error:', e);
+      return false;
     });
   }
 
-  return {
-    apply: apply
-  };
+  return { apply: apply };
 })();

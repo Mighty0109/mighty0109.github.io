@@ -380,6 +380,10 @@ var App = (function () {
           refreshLayerList();
           UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc644\ub8cc');
         }
+      }).catch(function () {
+        btn.disabled = false;
+        btn.innerHTML = AUTO_FIT_ICON + ' \uc790\ub3d9 \ub9de\ucda4';
+        UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc2e4\ud328');
       });
     });
     return btn;
@@ -504,10 +508,6 @@ var App = (function () {
       })(layer.id);
 
       layerListContainer.appendChild(item);
-    }
-
-    if (layers.length > 0) {
-      layerListContainer.appendChild(createAutoFitBtn());
     }
 
     if (layers.length >= 2) {
