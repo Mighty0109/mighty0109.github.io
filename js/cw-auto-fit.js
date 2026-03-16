@@ -24,9 +24,7 @@ CW.AutoFit = (function () {
             resolve(fallbackFocalPoint(img));
           });
           return;
-        } catch (e) {
-          // smartcrop threw synchronously
-        }
+        } catch (e) { /* smartcrop sync error */ }
       }
       resolve(fallbackFocalPoint(img));
     });
@@ -80,30 +78,23 @@ CW.AutoFit = (function () {
       bounds = { x: 0, y: 0, w: canvasW, h: canvasH, cx: canvasW / 2, cy: canvasH / 2 };
     }
 
-    console.log('[AutoFit] imgW=' + imgW + ' imgH=' + imgH + ' canvasW=' + canvasW + ' canvasH=' + canvasH);
-    console.log('[AutoFit] bounds:', JSON.stringify(bounds));
-
     return detectFocalPoint(img).then(function (focal) {
-      console.log('[AutoFit] focal:', JSON.stringify(focal));
-
-      // Renderer fit mode: actualPixelScale = min(canvasW/imgW, canvasH/imgH) * layer.scale
+      // Use 'center' mode where scale is direct: drawW = imgW * scale
       // Image center drawn at (canvasW/2 + offsetX, canvasH/2 + offsetY)
-      var baseFit = Math.min(canvasW / imgW, canvasH / imgH);
 
-      // layer.scale multiplier to cover panel bounds + 10% margin
-      var coverScale = Math.max(bounds.w / imgW, bounds.h / imgH) * 1.1;
-      var layerScale = coverScale / baseFit;
-      var actual = baseFit * layerScale;
+      // Scale to cover panel bounds + 10% margin
+      var scale = Math.max(bounds.w / imgW, bounds.h / imgH) * 1.1;
 
-      // Offset to place focal point at panel center
-      var offsetX = bounds.cx - canvasW / 2 - (focal.x - 0.5) * imgW * actual;
-      var offsetY = bounds.cy - canvasH / 2 - (focal.y - 0.5) * imgH * actual;
-
-      console.log('[AutoFit] layerScale=' + layerScale.toFixed(3) + ' offsetX=' + offsetX.toFixed(1) + ' offsetY=' + offsetY.toFixed(1));
+      // Offset: place focal point at panel center
+      // Focal pixel on drawn image = (focal.x - 0.5) * imgW * scale from image center
+      // Image center is at (canvasW/2 + offsetX, canvasH/2 + offsetY)
+      // We want: canvasW/2 + offsetX + (focal.x - 0.5) * imgW * scale = bounds.cx
+      var offsetX = bounds.cx - canvasW / 2 - (focal.x - 0.5) * imgW * scale;
+      var offsetY = bounds.cy - canvasH / 2 - (focal.y - 0.5) * imgH * scale;
 
       CW.LayerStore.update(layer.id, {
-        fillMode: 'fit',
-        scale: layerScale,
+        fillMode: 'center',
+        scale: scale,
         offsetX: offsetX,
         offsetY: offsetY,
         rotation: 0
