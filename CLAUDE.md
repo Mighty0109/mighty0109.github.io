@@ -8,6 +8,7 @@
 ## Workflow
 - 코드 수정 후 반드시 검증(문법 오류, 참조 누락 확인)한 뒤 커밋 & `git push origin main`으로 바로 배포할 것
 - 캐시 무효화: `index.html`의 CSS/JS `?v=` 파라미터를 변경할 것
+- 스크린샷으로 시작하는 파일은 허가 없이 바로 진행할 것
 
 ## Architecture
 
