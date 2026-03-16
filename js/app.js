@@ -474,6 +474,35 @@ var App = (function () {
       layerListContainer.appendChild(item);
     }
 
+    if (layers.length > 0) {
+      var autoFitBtn = document.createElement('button');
+      autoFitBtn.className = 'btn btn-primary btn-sm btn-auto-fit';
+      autoFitBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> \uc790\ub3d9 \ub9de\ucda4';
+      autoFitBtn.addEventListener('click', function () {
+        var layer = CW.LayerStore.getSelected();
+        if (!layer && layers.length > 0) {
+          CW.LayerStore.setSelected(layers[0].id);
+          layer = CW.LayerStore.getSelected();
+        }
+        if (!layer) return;
+
+        autoFitBtn.disabled = true;
+        autoFitBtn.innerHTML = '<span class="img-editor-spinner"></span> \ubd84\uc11d \uc911...';
+
+        CW.AutoFit.apply(layer).then(function (ok) {
+          autoFitBtn.disabled = false;
+          autoFitBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> \uc790\ub3d9 \ub9de\ucda4';
+          if (ok) {
+            showTab('controls');
+            refreshControls();
+            refreshLayerList();
+            UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc644\ub8cc');
+          }
+        });
+      });
+      layerListContainer.appendChild(autoFitBtn);
+    }
+
     if (layers.length >= 2) {
       var clearBtn = document.createElement('button');
       clearBtn.className = 'btn btn-secondary btn-sm layer-clear-all';

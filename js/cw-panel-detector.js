@@ -264,6 +264,58 @@ CW.PanelDetector = (function () {
     CW.emit('panels:colorChanged');
   }
 
+  function getPanelBounds(panelIndices) {
+    var w = CW.state.internalWidth;
+    var h = CW.state.internalHeight;
+    if (!w || !h) return null;
+
+    // Build a combined mask canvas from selected panels (or global mask)
+    var srcCanvas;
+    if (panelIndices && panelIndices.length > 0) {
+      srcCanvas = document.createElement('canvas');
+      srcCanvas.width = w;
+      srcCanvas.height = h;
+      var sCtx = srcCanvas.getContext('2d');
+      for (var i = 0; i < panelIndices.length; i++) {
+        var idx = panelIndices[i];
+        if (panelMasks[idx]) {
+          sCtx.drawImage(panelMasks[idx], 0, 0);
+        }
+      }
+    } else {
+      srcCanvas = CW.state.maskCanvas;
+    }
+    if (!srcCanvas) return null;
+
+    var ctx = srcCanvas.getContext('2d');
+    var imgData = ctx.getImageData(0, 0, w, h);
+    var d = imgData.data;
+    var minX = w, minY = h, maxX = 0, maxY = 0;
+    var found = false;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var alpha = d[(y * w + x) * 4 + 3];
+        if (alpha > 30) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          found = true;
+        }
+      }
+    }
+
+    if (!found) return null;
+
+    var bw = maxX - minX + 1;
+    var bh = maxY - minY + 1;
+    return {
+      x: minX, y: minY, w: bw, h: bh,
+      cx: minX + bw / 2, cy: minY + bh / 2
+    };
+  }
+
   function setShowNumbers(v) {
     showNumbers = v;
     CW.emit('render:request');
@@ -284,5 +336,6 @@ CW.PanelDetector = (function () {
     setColor: setColor,
     clearColors: clearColors,
     hitTest: hitTest,
+    getPanelBounds: getPanelBounds,
   };
 })();
