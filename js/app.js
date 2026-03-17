@@ -353,40 +353,29 @@ var App = (function () {
   // Layer List UI
   // ========================
 
-  var AUTO_FIT_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var BG_REMOVE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2L9.19 8.63L2 9.24L7.46 13.97L5.82 21L12 17.27L18.18 21L16.54 13.97L22 9.24L14.81 8.63L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  function createAutoFitBtn() {
+  function createBgRemoveAllBtn() {
     var btn = document.createElement('button');
     btn.className = 'btn btn-primary btn-sm btn-auto-fit';
-    btn.innerHTML = AUTO_FIT_ICON + ' \uc790\ub3d9 \ub9de\ucda4';
+    btn.innerHTML = BG_REMOVE_ICON + ' \ubaa8\ub4e0 \ubc30\uacbd \uc9c0\uc6b0\uae30';
     btn.addEventListener('click', function () {
-      var layers = CW.LayerStore.getAll();
-      var layer = CW.LayerStore.getSelected();
-      if (!layer && layers.length > 0) {
-        CW.LayerStore.setSelected(layers[0].id);
-        layer = CW.LayerStore.getSelected();
-      }
-      if (!layer) return;
-
       btn.disabled = true;
-      btn.innerHTML = '<span class="img-editor-spinner"></span> \ubd84\uc11d \uc911...';
+      btn.innerHTML = '<span class="img-editor-spinner"></span> \ucc98\ub9ac \uc911...';
 
-      CW.AutoFit.apply(layer, function (pct, current, total) {
+      CW.AutoFit.removeAllBackgrounds(function (pct, current, total) {
         btn.innerHTML = '<span class="img-editor-spinner"></span> \ubc30\uacbd \uc81c\uac70 ' + current + '/' + total + ' (' + pct + '%)';
-      }).then(function (ok) {
+      }).then(function () {
         btn.disabled = false;
-        btn.innerHTML = AUTO_FIT_ICON + ' \uc790\ub3d9 \ub9de\ucda4';
-        if (ok) {
-          showTab('controls');
-          refreshControls();
-          refreshLayerList();
-          UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc644\ub8cc');
-        }
+        btn.innerHTML = BG_REMOVE_ICON + ' \ubaa8\ub4e0 \ubc30\uacbd \uc9c0\uc6b0\uae30';
+        refreshLayerList();
+        CW.emit('render:request');
+        UI.showToast('\ubaa8\ub4e0 \ubc30\uacbd \uc81c\uac70 \uc644\ub8cc');
       }).catch(function (e) {
         btn.disabled = false;
-        btn.innerHTML = AUTO_FIT_ICON + ' \uc790\ub3d9 \ub9de\ucda4';
-        UI.showToast('\uc790\ub3d9 \ub9de\ucda4 \uc2e4\ud328');
-        console.error('[AutoFit btn]', e);
+        btn.innerHTML = BG_REMOVE_ICON + ' \ubaa8\ub4e0 \ubc30\uacbd \uc9c0\uc6b0\uae30';
+        UI.showToast('\ubc30\uacbd \uc81c\uac70 \uc2e4\ud328');
+        console.error('[BgRemoveAll]', e);
       });
     });
     return btn;
@@ -535,11 +524,11 @@ var App = (function () {
       hint.textContent = 'PNG, JPG, WebP (' + layers.length + '/' + maxLayers + ')';
     }
 
-    // Auto-fit button in upload tab panel
-    var existingAutoFit = uploadZoneContainer.querySelector('.btn-auto-fit');
-    if (existingAutoFit) existingAutoFit.remove();
+    // Background remove all button in upload tab panel
+    var existingBgBtn = uploadZoneContainer.querySelector('.btn-auto-fit');
+    if (existingBgBtn) existingBgBtn.remove();
     if (layers.length > 0) {
-      uploadZoneContainer.appendChild(createAutoFitBtn());
+      uploadZoneContainer.appendChild(createBgRemoveAllBtn());
     }
   }
 
